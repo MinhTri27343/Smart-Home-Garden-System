@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "author": "Trí Đỗ",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-breadboard-half", "id": "bb1", "top": -51, "left": -141.2, "attrs": {} },
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 206.44, "attrs": {} },
+    {
+      "type": "wokwi-photoresistor-sensor",
+      "id": "ldr1",
+      "top": 185.6,
+      "left": -152.8,
+      "attrs": {}
+    },
+    { "type": "wokwi-led", "id": "led1", "top": 34.8, "left": 51.8, "attrs": { "color": "red" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:GND.2", "bb1:bn.25", "black", [ "v0", "h38.4", "v192", "h-182.4" ] ],
+    [ "esp:5V", "bb1:bp.25", "red", [ "h-9.45", "v-67.2" ] ],
+    [ "ldr1:VCC", "bb1:bp.20", "red", [ "h0" ] ],
+    [ "ldr1:GND", "bb1:bn.19", "black", [ "h0" ] ],
+    [ "ldr1:AO", "esp:34", "green", [ "h384", "v-173.5" ] ],
+    [ "led1:A", "bb1:21b.g", "", [ "$bb" ] ],
+    [ "led1:C", "bb1:20b.g", "", [ "$bb" ] ],
+    [ "bb1:bn.16", "bb1:20b.i", "green", [ "v0" ] ],
+    [ "esp:2", "bb1:21b.h", "green", [ "h-105.6", "v-76.8" ] ]
+  ],
+  "dependencies": {}
+}
