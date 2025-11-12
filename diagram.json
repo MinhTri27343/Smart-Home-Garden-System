@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "author": "Nghi Van Dang",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-breadboard-half",
+      "id": "bb1",
+      "top": -3,
+      "left": -400.4,
+      "attrs": { "color": "#eeefed" }
+    },
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-dht22",
+      "id": "dht1",
+      "top": -172.5,
+      "left": -178.2,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 91.2,
+      "left": -182.95,
+      "rotate": 90,
+      "attrs": { "value": "1000" }
+    }
+  ],
+  "connections": [
+    ["esp:TX", "$serialMonitor:RX", "", []],
+    ["esp:RX", "$serialMonitor:TX", "", []],
+    ["dht1:GND", "bb1:tn.23", "black", ["v0"]],
+    ["bb1:tn.25", "esp:GND.2", "black", ["v0"]],
+    ["dht1:VCC", "bb1:tp.18", "red", ["v0"]],
+    ["bb1:tp.16", "bb1:24b.h", "red", ["v0"]],
+    ["bb1:24b.j", "esp:5V", "red", ["v38.4", "h158.21"]],
+    ["r1:1", "bb1:24t.c", "", ["$bb"]],
+    ["r1:2", "bb1:24b.g", "", ["$bb"]],
+    ["dht1:SDA", "bb1:24t.a", "green", ["v0"]],
+    ["bb1:24t.b", "esp:15", "green", ["v9.6", "h134.4", "v9.6"]]
+  ],
+  "dependencies": {}
+}
