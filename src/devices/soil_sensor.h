@@ -1,7 +1,7 @@
-#pragma once
-#include <Arduino.h>
+// #pragma once
+// #include <Arduino.h>
 
-void soilSensorInit(int pin);
-void handlePublishSoilSensor(const String& baseTopic);
+// void soilSensorInit(int pin);
+// void handlePublishSoilSensor(const String& baseTopic);
 
     
