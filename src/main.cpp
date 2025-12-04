@@ -14,8 +14,8 @@ DHT dht(DHTPIN, DHTTYPE);
 // const char* password = ""; //***Your WiFi Password***
 
 
-const char* ssid = "iPhone";     //***Your WiFi SSID***
-const char* password = "ngaysinhcuatao"; //***Your WiFi Password***
+const char* ssid = "iPhone";   
+const char* password = "ngaysinhcuatao"; 
 
 //***Set server***
 const char* mqttServer = "172.20.10.3"; 
@@ -61,9 +61,6 @@ void callback(char* topic, byte* message, unsigned int length) {
     msg += (char)message[i];
   }
   Serial.println(msg);
- 
-  //***Code here to process the received package***
-
 }
 
 void setup() {
@@ -94,16 +91,7 @@ void loop() {
   if (millis() - lastSend > 2000) {
     lastSend = millis();
 
-    // Giả lập dữ liệu nhiệt độ, độ ẩm, hoặc trạng thái
-    // int sensorValue = analogRead(HUMIDPIN); // nếu có cảm biến thật thì đọc ở đây
-    // char msg1[10];
-    // sprintf(msg1, "%d", sensorValue);
-    // mqttClient.publish("home/humid-sensor", msg1);
-    // Serial.print("Gia tri humid: ");
-    // Serial.println(msg1);
-
-
-    float t = dht.readTemperature(); // nếu có cảm biến thật thì đọc ở đây
+    float t = dht.readTemperature();
     char msg2[10];
     sprintf(msg2, "%f", t);
     mqttClient.publish("home/temperature-sensor", msg2);
@@ -114,51 +102,3 @@ void loop() {
   
   delay(50);
 }
-
-
-
-
-// #include <WiFi.h>
-// #include <FirebaseESP32.h>
-
-// #define WIFI_SSID "Wokwi-GUEST"
-// #define WIFI_PASSWORD ""
-// #define DATABASE_URL "https://smart-home-garden-system-f599b-default-rtdb.firebaseio.com/"
-// #define API_KEY "AIzaSyALc4YdhlS0YTy7JhLpXVUPoTYgxY0GO_g"  // rỗng vì DB public
-
-// FirebaseConfig config;
-// FirebaseAuth auth;
-// FirebaseData fbdo;
-// FirebaseESP32 ESP32Firebase;  // tạo object riêng
-
-// void setup() {
-//   Serial.begin(9600);
-
-//   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-//   while (WiFi.status() != WL_CONNECTED) delay(300);
-//   Serial.println("\n WiFi connected");
-
-//   config.database_url = DATABASE_URL;
-//   config.api_key = API_KEY;
-  
-//   // NOTE: Neu DB public ko de (&config, &auth)
-//   Firebase.begin(DATABASE_URL, API_KEY);
-//   ESP32Firebase.reconnectWiFi(true);
-
-//   Serial.println("Firebase initialized");
-// }
-
-// void loop() {
-//   int sensorValue = analogRead(34);
-//   Serial.print("Soil value: ");
-//   Serial.println(sensorValue);
-
-//   if (Firebase.setInt(fbdo, "data", sensorValue)) {
-//       Serial.println("Data sent successfully!");
-//   } else {
-//       Serial.println(fbdo.errorReason());
-//   }
-
-//   delay(1000);
-// }
-
