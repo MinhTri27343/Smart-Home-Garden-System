@@ -1,164 +1,234 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <DHT.h>
-#include <WifiManager.h>
+#include <ArduinoJson.h>
+#include <WiFiManager.h>
 
-#define DHTPIN 27 
-#define HUMIDPIN 34
-#define DHTTYPE DHT11
+// ==========================================
+// 1. CẤU HÌNH
+// ==========================================
 
-DHT dht(DHTPIN, DHTTYPE);
+// --- Khai báo chân (Pin Definitions) ---
+#define PIN_LIGHT       32
+#define PIN_DHT         33
+#define PIN_WATER       34
+#define PIN_HUMIDITY    35
+#define PIN_RELAY       18
+
+// --- Loại cảm biến ---
+#define DHT_TYPE        DHT11
+
+// --- Thông tin WiFi ---
+const char *SSID_NAME = "Minh Tri";
+const char *SSID_PASS = "26072005";
+
+// --- Thông tin MQTT ---
+const char *MQTT_SERVER = "192.168.1.43"; // IP của Broker
+const int   MQTT_PORT   = 1883;
 
 
-// const char* ssid = "Wokwi-GUEST";     //***Your WiFi SSID***
-// const char* password = ""; //***Your WiFi Password***
+// --- Các Topic  ---
+// Topic nhận lện
+const char *TOPIC_CONTROL = "device/water"; 
 
+// Topic gửi dữ liệu 
+const char *TOPIC_SENSOR_WATER = "sensor/water";
+const char *TOPIC_SENSOR_LIGHT = "sensor/light";
+const char *TOPIC_SENSOR_TEMP  = "sensor/temperature";
+const char *TOPIC_SENSOR_HUMID = "sensor/humid";
 
-const char* ssid = "iPhone";     //***Your WiFi SSID***
-const char* password = "ngaysinhcuatao"; //***Your WiFi Password***
+// ==========================================
+// 2. KHỞI TẠO BIẾN & ĐỐI TƯỢNG
+// ==========================================
 
-//***Set server***
-const char* mqttServer = "172.20.10.3"; 
-int port = 1883;
-
+// --- Khởi tạo biến ---
+DHT dht(PIN_DHT, DHT_TYPE);
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
+WiFiManager wifiManager; // Khởi tạo WiFiManager
 
-void wifiConnect() {
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println(" Connected!");
-   Serial.print("ESP32 IP: ");
-  Serial.println(WiFi.localIP());
-}
+// Biến quản lý hẹn giờ
+unsigned long pumpOffTime  = 0;
+bool isPumpTimerActive  = false;
 
-void mqttConnect() {
-  while(!mqttClient.connected()) {
-    Serial.println("Attemping MQTT connection...");
+// Biến quản lý thời gian gửi tin nhắn
+unsigned long lastSendTime = 0;
+const long INTERVAL_SEND = 2000; // Gửi dữ liệu mỗi 2000ms (2 giây)
+
+// ==========================================
+// 3. CÁC HÀM XỬ LÝ KẾT NỐI
+// ==========================================
+
+// void setupWifi() {
+//   delay(10);
+//   Serial.println();
+//   Serial.print("Dang ket noi WiFi: ");
+//   Serial.println(SSID_NAME);
+
+//   WiFi.begin(SSID_NAME, SSID_PASS);
+
+//   while (WiFi.status() != WL_CONNECTED) {
+//     delay(500);
+//     Serial.print(".");
+//   }
+
+//   Serial.println("\nWiFi da ket noi!");
+//   Serial.print("IP Address: ");
+//   Serial.println(WiFi.localIP());
+// }
+
+void reconnectMqtt() {
+  // Lặp cho đến khi kết nối được
+  while (!mqttClient.connected()) {
+    Serial.print("Dang ket noi MQTT...");
     String clientId = "ESP32Client-" + String(random(0xffff), HEX);
-    if(mqttClient.connect(clientId.c_str())) {
-      Serial.println("connected ");
-      //***Subscribe all topic you need***
-      mqttClient.subscribe("home/humid-sensor");
-     
-    }
-    else {
+    
+    if (mqttClient.connect(clientId.c_str())) {
+      Serial.println("Thanh cong!");
+      // Đăng ký nhận tin từ topic điều khiển
+      mqttClient.subscribe(TOPIC_CONTROL);
+    } else {
+      Serial.print("That bai, rc=");
       Serial.print(mqttClient.state());
-      Serial.println("try again in 5 seconds");
+      Serial.println(" -> Thu lai sau 5s");
       delay(5000);
     }
   }
 }
 
-//MQTT Receiver
-void callback(char* topic, byte* message, unsigned int length) {
-  Serial.println(topic);
-  String msg;
-  for(int i=0; i<length; i++) {
-    msg += (char)message[i];
-  }
-  Serial.println(msg);
- 
-  //***Code here to process the received package***
+// ==========================================
+// 4. HÀM XỬ LÝ LOGIC (CALLBACK & SENSOR)
+// ==========================================
 
+// Hàm xử lý khi nhận tin nhắn MQTT
+void callback(char *topic, byte *payload, unsigned int length) {
+  Serial.print("Nhan tin nhan tu [");
+  Serial.print(topic);
+  Serial.print("]: ");
+
+  // 1. Parse JSON
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, payload, length);
+
+  if (error) {
+    Serial.print("Loi doc JSON: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  // 2. Lấy dữ liệu và chuẩn hóa
+  String lenh = String((const char*)doc["turn"]); 
+  int soGiay  = doc["second"];
+  
+  lenh.toUpperCase(); // Chuyển thành "ON", "OFF" (chữ hoa) để so sánh chuẩn xác
+
+
+  // 3. Xử lý Logic
+  if (lenh == "OFF") {
+    digitalWrite(PIN_RELAY, LOW); 
+    isPumpTimerActive  = false;          // Hủy hẹn giờ
+  } 
+  else if (lenh == "ON") {
+    digitalWrite(PIN_RELAY, HIGH); // Bật bơm
+    
+    if (soGiay > 0) {
+      // Thiết lập hẹn giờ tắt
+      pumpOffTime  = millis() + (soGiay * 1000UL);
+      isPumpTimerActive  = true;
+    } else {
+      // Bật mãi mãi
+      isPumpTimerActive  = false;
+    }
+  }
 }
+
+// Hàm đọc cảm biến và gửi dữ liệu
+void readAndPublishSensors() {
+  // 1. Water Sensor
+  int waterValue = analogRead(PIN_WATER);
+  mqttClient.publish(TOPIC_SENSOR_WATER, String(waterValue).c_str());
+  Serial.printf("Water: %d\n", waterValue);
+
+  // 2. Light Sensor
+  int lightValue = analogRead(PIN_LIGHT);
+  mqttClient.publish(TOPIC_SENSOR_LIGHT, String(lightValue).c_str());
+  Serial.printf("Light: %d\n", lightValue);
+
+  // 3. Humidity (Soil) Sensor
+  int humidValue = analogRead(PIN_HUMIDITY);
+  mqttClient.publish(TOPIC_SENSOR_HUMID, String(humidValue).c_str());
+  Serial.printf("Humid: %d\n", humidValue);
+
+  // 4. DHT Sensor (Temperature)
+  float tempValue = dht.readTemperature();
+  
+  
+  Serial.println("-----------------------");
+}
+
+// ==========================================
+// 5. MAIN SETUP & LOOP
+// ==========================================
 
 void setup() {
   Serial.begin(9600);
-  Serial.print("Connecting to WiFi");
+  
+  // Cấu hình chân
+  pinMode(PIN_WATER, INPUT);
+  pinMode(PIN_LIGHT, INPUT);
+  pinMode(PIN_HUMIDITY, INPUT);
+  pinMode(PIN_RELAY, OUTPUT);
+  digitalWrite(PIN_RELAY, LOW); // Mặc định tắt bơm
+
+  // Khởi động cảm biến
   dht.begin();
 
+  // Khởi động wifi
 
-  wifiConnect();
-  mqttClient.setServer(mqttServer, port);
+  wifiManager.resetSettings();
+
+  wifiManager.autoConnect("CaMoi3CoGai");
+
+  // Kết nối mạng
+  // setupWifi();
+
+  Serial.println("\nWiFi da ket noi!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  Serial.println("connect success , ye");
+
+  mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
   mqttClient.setCallback(callback);
-  mqttClient.setKeepAlive( 90 );
-}
+  mqttClient.setKeepAlive(90); 
 
+  Serial.println("connect success , ye2");
+}
 
 void loop() {
+  // 1. Kiểm tra kết nối WiFi
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.print("Reconnecting to WiFi");
-    wifiConnect();
+    // setupWifi();
+    Serial.println("Mat ket noi WiFi...");
   }
-  if(!mqttClient.connected()) {
-    mqttConnect();
+
+  // 2. Kiểm tra kết nối MQTT
+  if (!mqttClient.connected()) {
+    reconnectMqtt();
   }
+  
+  // 3. Duy trì MQTT
   mqttClient.loop();
 
-
- static unsigned long lastSend = 0;
-  if (millis() - lastSend > 2000) {
-    lastSend = millis();
-
-    // Giả lập dữ liệu nhiệt độ, độ ẩm, hoặc trạng thái
-    // int sensorValue = analogRead(HUMIDPIN); // nếu có cảm biến thật thì đọc ở đây
-    // char msg1[10];
-    // sprintf(msg1, "%d", sensorValue);
-    // mqttClient.publish("home/humid-sensor", msg1);
-    // Serial.print("Gia tri humid: ");
-    // Serial.println(msg1);
-
-
-    float t = dht.readTemperature(); // nếu có cảm biến thật thì đọc ở đây
-    char msg2[10];
-    sprintf(msg2, "%f", t);
-    mqttClient.publish("home/temperature-sensor", msg2);
-    Serial.print("Gia tri temperature: ");
-    Serial.println(msg2);
-
+  // 4. Logic tự động tắt bơm (Non-blocking)
+  if (isPumpTimerActive  && millis() >= pumpOffTime ) {
+    digitalWrite(PIN_RELAY, LOW); // Tắt bơm
+    isPumpTimerActive  = false;           // Reset cờ
   }
-  
-  delay(50);
+
+  // 5. Đọc và gửi cảm biến định kỳ (Non-blocking)
+  if (millis() - lastSendTime > INTERVAL_SEND) {
+    lastSendTime = millis();
+    readAndPublishSensors();
+  }
 }
-
-
-
-
-// #include <WiFi.h>
-// #include <FirebaseESP32.h>
-
-// #define WIFI_SSID "Wokwi-GUEST"
-// #define WIFI_PASSWORD ""
-// #define DATABASE_URL "https://smart-home-garden-system-f599b-default-rtdb.firebaseio.com/"
-// #define API_KEY "AIzaSyALc4YdhlS0YTy7JhLpXVUPoTYgxY0GO_g"  // rỗng vì DB public
-
-// FirebaseConfig config;
-// FirebaseAuth auth;
-// FirebaseData fbdo;
-// FirebaseESP32 ESP32Firebase;  // tạo object riêng
-
-// void setup() {
-//   Serial.begin(9600);
-
-//   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-//   while (WiFi.status() != WL_CONNECTED) delay(300);
-//   Serial.println("\n WiFi connected");
-
-//   config.database_url = DATABASE_URL;
-//   config.api_key = API_KEY;
-  
-//   // NOTE: Neu DB public ko de (&config, &auth)
-//   Firebase.begin(DATABASE_URL, API_KEY);
-//   ESP32Firebase.reconnectWiFi(true);
-
-//   Serial.println("Firebase initialized");
-// }
-
-// void loop() {
-//   int sensorValue = analogRead(34);
-//   Serial.print("Soil value: ");
-//   Serial.println(sensorValue);
-
-//   if (Firebase.setInt(fbdo, "data", sensorValue)) {
-//       Serial.println("Data sent successfully!");
-//   } else {
-//       Serial.println(fbdo.errorReason());
-//   }
-
-//   delay(1000);
-// }
-

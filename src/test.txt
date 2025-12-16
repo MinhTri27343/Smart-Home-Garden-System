@@ -1,51 +1,61 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <DHT.h>
-#include <WifiManager.h>
 
-#define DHTPIN 27 
-#define HUMIDPIN 34
+#define LIGHTPIN 32
+#define DHTPIN 33
+#define WATERPIN 34
+#define HUMIDITYPIN 35
+#define RELAYPIN  18
 #define DHTTYPE DHT11
 
 DHT dht(DHTPIN, DHTTYPE);
 
-
 // const char* ssid = "Wokwi-GUEST";     //***Your WiFi SSID***
 // const char* password = ""; //***Your WiFi Password***
 
+const char *ssid = "Minh Tri";             //***Your WiFi SSID***
+const char *password = "26072005"; //***Your WiFi Password***
 
-const char* ssid = "iPhone";     //***Your WiFi SSID***
-const char* password = "ngaysinhcuatao"; //***Your WiFi Password***
+const char *relay = "device/water";   
 
 //***Set server***
-const char* mqttServer = "172.20.10.3"; 
+const char *mqttServer = "192.168.1.43";
+// const char *mqttServer = "broker.hivemq.com";
 int port = 1883;
 
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
-
-void wifiConnect() {
+void wifiConnect()
+{
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
+  Serial.println(ssid);
+  Serial.println(password);
+  while (WiFi.status() != WL_CONNECTED)
+  {
     delay(500);
     Serial.print(".");
   }
   Serial.println(" Connected!");
-   Serial.print("ESP32 IP: ");
+  Serial.print("ESP32 IP: ");
   Serial.println(WiFi.localIP());
 }
 
-void mqttConnect() {
-  while(!mqttClient.connected()) {
+void mqttConnect()
+{
+  Serial.println(mqttServer);
+  while (!mqttClient.connected())
+  {
     Serial.println("Attemping MQTT connection...");
     String clientId = "ESP32Client-" + String(random(0xffff), HEX);
-    if(mqttClient.connect(clientId.c_str())) {
+    if (mqttClient.connect(clientId.c_str()))
+    {
       Serial.println("connected ");
       //***Subscribe all topic you need***
-      mqttClient.subscribe("home/humid-sensor");
-     
+      mqttClient.subscribe("device/water");
     }
-    else {
+    else
+    {
       Serial.print(mqttClient.state());
       Serial.println("try again in 5 seconds");
       delay(5000);
@@ -53,70 +63,106 @@ void mqttConnect() {
   }
 }
 
-//MQTT Receiver
-void callback(char* topic, byte* message, unsigned int length) {
+// MQTT Receiver
+void callback(char *topic, byte *message, unsigned int length)
+{
   Serial.println(topic);
-  String msg;
-  for(int i=0; i<length; i++) {
-    msg += (char)message[i];
-  }
-  Serial.println(msg);
- 
-  //***Code here to process the received package***
 
+    String msg;
+    for (int i = 0; i < length; i++)
+    {
+      msg += (char)message[i];
+    }
+    Serial.println(msg);
+    if (msg == "ON"){
+      digitalWrite(RELAYPIN, HIGH);
+    }
+    else if (msg == "OFF") {
+      digitalWrite(RELAYPIN, LOW);
+    }
+
+  //***Code here to process the received package***
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(9600);
   Serial.print("Connecting to WiFi");
   dht.begin();
-
+  pinMode(WATERPIN, INPUT);
+  pinMode(LIGHTPIN, INPUT);
+  pinMode(HUMIDITYPIN, INPUT);
+   pinMode(RELAYPIN, OUTPUT);
 
   wifiConnect();
   mqttClient.setServer(mqttServer, port);
   mqttClient.setCallback(callback);
-  mqttClient.setKeepAlive( 90 );
+  mqttClient.setKeepAlive(90);
+
+
+  // Không cần đăng nhập vì rule mở
 }
 
-
-void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
+void loop()
+{
+  if (WiFi.status() != WL_CONNECTED)
+  {
     Serial.print("Reconnecting to WiFi");
     wifiConnect();
   }
-  if(!mqttClient.connected()) {
+  if (!mqttClient.connected())
+  {
     mqttConnect();
   }
   mqttClient.loop();
 
-
- static unsigned long lastSend = 0;
-  if (millis() - lastSend > 2000) {
+  static unsigned long lastSend = 0;
+  if (millis() - lastSend > 2000)
+  {
     lastSend = millis();
 
     // Giả lập dữ liệu nhiệt độ, độ ẩm, hoặc trạng thái
-    // int sensorValue = analogRead(HUMIDPIN); // nếu có cảm biến thật thì đọc ở đây
-    // char msg1[10];
-    // sprintf(msg1, "%d", sensorValue);
-    // mqttClient.publish("home/humid-sensor", msg1);
-    // Serial.print("Gia tri humid: ");
-    // Serial.println(msg1);
+    int waterValue = analogRead(WATERPIN); // nếu có cảm biến thật thì đọc ở đây
+    char msg1[10];
+    sprintf(msg1, "%d", waterValue);
+    mqttClient.publish("sensor/water", msg1);
+    Serial.print("Gia tri water: ");
+    Serial.println(msg1);
 
-
-    float t = dht.readTemperature(); // nếu có cảm biến thật thì đọc ở đây
-    char msg2[10];
-    sprintf(msg2, "%f", t);
-    mqttClient.publish("home/temperature-sensor", msg2);
-    Serial.print("Gia tri temperature: ");
+    int lightSensor =  analogRead(LIGHTPIN);  // nếu có cảm biến thật thì đọc ở đây
+    char msg2[100];
+    sprintf(msg2, "%d", lightSensor);
+    mqttClient.publish("sensor/light", msg2);
+    Serial.print("Gia tri light: ");
     Serial.println(msg2);
 
+    // REAL 
+    float temperatureValue =  dht.readTemperature();
+    char msg3[10];
+    sprintf(msg3, "%f", temperatureValue);
+    mqttClient.publish("sensor/temperature", msg3);
+    Serial.print("Gia tri temperature: ");
+    Serial.println(msg3);
+
+    // TEST
+    // int temperatureValue =  analogRead(LIGHTPIN);  // nếu có cảm biến thật thì đọc ở đây
+    // char msg3[100];
+    // sprintf(msg3, "%d", temperatureValue);
+    // mqttClient.publish("sensor/temperature", msg3);
+    // Serial.print("Gia tri temperature: ");
+    // Serial.println(msg3);
+
+
+     int  humidValue =   analogRead(HUMIDITYPIN);
+    char msg4[10];
+    sprintf(msg4, "%d", humidValue);
+    mqttClient.publish("sensor/humid", msg4);
+    Serial.print("Gia tri humid: ");
+    Serial.println(msg4);
   }
-  
+
   delay(50);
 }
-
-
-
 
 // #include <WiFi.h>
 // #include <FirebaseESP32.h>
@@ -140,7 +186,7 @@ void loop() {
 
 //   config.database_url = DATABASE_URL;
 //   config.api_key = API_KEY;
-  
+
 //   // NOTE: Neu DB public ko de (&config, &auth)
 //   Firebase.begin(DATABASE_URL, API_KEY);
 //   ESP32Firebase.reconnectWiFi(true);
@@ -161,4 +207,3 @@ void loop() {
 
 //   delay(1000);
 // }
-
